@@ -57,11 +57,7 @@ import com.fluxtream.utils.Utils;
 import com.google.gson.Gson;
 import com.luckycatlabs.sunrisesunset.SunriseSunsetCalculator;
 import com.luckycatlabs.sunrisesunset.dto.Location;
-<<<<<<< HEAD:fluxtream-core/src/main/java/com/fluxtream/api/CalendarDataStore.java
 import org.codehaus.plexus.util.ExceptionUtils;
-=======
-import org.apache.log4j.Logger;
->>>>>>> master:fluxtream-web/src/main/java/com/fluxtream/api/CalendarDataStore.java
 import org.joda.time.DateTimeZone;
 import org.joda.time.LocalDate;
 import org.joda.time.format.DateTimeFormat;
