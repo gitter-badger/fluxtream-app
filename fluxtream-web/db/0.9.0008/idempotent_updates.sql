@@ -62,3 +62,5 @@ ALTER TABLE `Facet_WithingsBodyScaleMeasure` ADD COLUMN `apiKeyId` bigint(20) NU
 ALTER TABLE `Facet_WithingsBodyScaleMeasure` ADD INDEX `apiKeyId` (`apiKeyId` );
 ALTER TABLE `Facet_ZeoSleepStats` ADD COLUMN `apiKeyId` bigint(20) NULL;
 ALTER TABLE `Facet_ZeoSleepStats` ADD INDEX `apiKeyId` (`apiKeyId` );
+ALTER TABLE `Facet_FluxtreamCapturePhoto` ADD COLUMN `apiKeyId` bigint(20) NULL;
+ALTER TABLE `Facet_FluxtreamCapturePhoto` ADD INDEX `apiKeyId` (`apiKeyId` );

@@ -16,6 +16,10 @@ import com.google.api.client.util.Key;
 @Entity(name="Facet_GoogleLatitudeLocation")
 @ObjectTypeSpec(name = "location", value = 1, prettyname = "Location")
 @NamedQueries({
+        @NamedQuery(name = "google_latitude.location.newest", query = "SELECT facet FROM " +
+                "Facet_GoogleLatitudeLocation facet WHERE " +
+                "facet.guestId=? AND facet.timestampMs<? " +
+                "ORDER BY facet.timestampMs DESC"),
 		@NamedQuery(name = "google_latitude.location.lastSeen", query = "SELECT facet FROM " +
 				"Facet_GoogleLatitudeLocation facet WHERE " +
 				"facet.guestId=? AND facet.timestampMs<? " +
@@ -33,8 +37,7 @@ import com.google.api.client.util.Key;
 		@NamedQuery(name = "google_latitude.location.between", query = "SELECT facet FROM " +
 				"Facet_GoogleLatitudeLocation facet WHERE " +
 				"facet.guestId=? AND facet.timestampMs>=? AND " +
-				"facet.timestampMs<=? ORDER BY facet.timestampMs"),
-        @NamedQuery(name = "google_latitude.location.newest", query = "SELECT facet FROM Facet_GoogleLatitudeLocation facet WHERE facet.guestId=? ORDER BY facet.timestampMs DESC LIMIT 1")
+				"facet.timestampMs<=? ORDER BY facet.timestampMs")
 })
 public class LocationFacet extends AbstractFacet implements Comparable<LocationFacet>, Serializable {
 

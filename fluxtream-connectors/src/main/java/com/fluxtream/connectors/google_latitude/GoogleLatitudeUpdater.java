@@ -3,15 +3,17 @@ package com.fluxtream.connectors.google_latitude;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import com.fluxtream.aspects.FlxLogger;
 import com.fluxtream.connectors.Connector.UpdateStrategyType;
 import com.fluxtream.connectors.annotations.JsonFacetCollection;
 import com.fluxtream.connectors.annotations.Updater;
 import com.fluxtream.connectors.controllers.GoogleOAuth2Helper;
 import com.fluxtream.connectors.updaters.AbstractGoogleOAuthUpdater;
+import com.fluxtream.connectors.updaters.RateLimitReachedException;
 import com.fluxtream.connectors.updaters.UpdateInfo;
-import com.fluxtream.domain.ApiUpdate;
 import com.fluxtream.services.ApiDataService;
 import com.fluxtream.services.GuestService;
+import com.fluxtream.services.JPADaoService;
 import com.fluxtream.utils.Utils;
 import com.google.api.client.googleapis.json.JsonCParser;
 import com.google.api.client.http.HttpRequest;
@@ -25,6 +27,8 @@ import org.springframework.stereotype.Component;
 @JsonFacetCollection(LocationFacetVOCollection.class)
 public class GoogleLatitudeUpdater extends AbstractGoogleOAuthUpdater {
 
+    FlxLogger logger = FlxLogger.getLogger(GoogleLatitudeUpdater.class);
+
 	@Autowired
 	GuestService guestService;
 
@@ -33,6 +37,9 @@ public class GoogleLatitudeUpdater extends AbstractGoogleOAuthUpdater {
 
     @Autowired
     GoogleOAuth2Helper oAuth2Helper;
+
+    @Autowired
+    JPADaoService jpaDaoService;
 
 	public GoogleLatitudeUpdater() {
 		super();
@@ -45,9 +52,13 @@ public class GoogleLatitudeUpdater extends AbstractGoogleOAuthUpdater {
 	}
 
 	public void updateConnectorData(UpdateInfo updateInfo) throws Exception {
-		ApiUpdate lastSuccessfulUpdate = connectorUpdateService
-				.getLastSuccessfulUpdate(updateInfo.apiKey);
-		loadHistory(updateInfo, lastSuccessfulUpdate.ts,
+        final List<LocationFacet> locationFacets = jpaDaoService.executeQuery("SELECT facet FROM " +
+            "Facet_GoogleLatitudeLocation facet WHERE " +
+            "facet.guestId=? AND (facet.apiKeyId=null OR facet.apiKeyId=?) " +
+            "ORDER BY facet.timestampMs DESC LIMIT 1", LocationFacet.class, updateInfo.getGuestId(), updateInfo.apiKey.getId());
+        if (locationFacets.size()==0) return;
+        LocationFacet newest = locationFacets.get(0);
+		loadHistory(updateInfo, newest.timestampMs,
 				System.currentTimeMillis());
 	}
 
@@ -90,6 +101,7 @@ public class GoogleLatitudeUpdater extends AbstractGoogleOAuthUpdater {
 			long maxTime, String accessToken) throws Exception {
 		long then = System.currentTimeMillis();
 		String requestUrl = "request url not set yet";
+        int statusCode = -1;
 		try {
 			transport.addParser(new JsonCParser());
 			HttpRequest request = transport.buildGetRequest();
@@ -103,14 +115,27 @@ public class GoogleLatitudeUpdater extends AbstractGoogleOAuthUpdater {
             latitudeUrl.put("access_token", accessToken);
 			request.url = latitudeUrl;
 			requestUrl = latitudeUrl.build();
-			HttpResponse response = request.execute();
-			List<LocationFacet> result = response.parseAs(LocationList.class).items;
-			countSuccessfulApiCall(updateInfo.apiKey,
-					updateInfo.objectTypes, then, requestUrl);
-			return result;
+            if (!(hasReachedRateLimit(updateInfo.apiKey.getConnector(), updateInfo.getGuestId()))) {
+                HttpResponse response = request.execute();
+                statusCode = response.statusCode;
+                List<LocationFacet> result = response.parseAs(LocationList.class).items;
+                countSuccessfulApiCall(updateInfo.apiKey,
+                        updateInfo.objectTypes, then, requestUrl);
+                return result;
+            } else
+                throw new RateLimitReachedException("Google Latitude Rate Limit reached");
 		} catch (Exception e) {
-			countFailedApiCall(updateInfo.apiKey,
-					updateInfo.objectTypes, then, requestUrl, Utils.stackTrace(e));
+            if (statusCode==304) {
+                String message = "304: Too Many Calls";
+                countFailedApiCall(updateInfo.apiKey, updateInfo.objectTypes, then, requestUrl, message);
+                StringBuilder sb = new StringBuilder("module=updateQueue component=GoogleLatitudeUpdater action=executeList")
+                        .append(" connector=google_latitude")
+                        .append(" guestId=").append(updateInfo.getGuestId())
+                        .append(" message=\"Rate Limit was reached, but we couldn't see it\"");
+                logger.warn(sb);
+                throw new RateLimitReachedException("Google Latitude Rate Limit reached (wasn't detected)");
+            }
+            countFailedApiCall(updateInfo.apiKey, updateInfo.objectTypes, then, requestUrl, Utils.stackTrace(e));
 			throw e;
 		}
 	}
