@@ -42,4 +42,6 @@ GeoLiteCity.dat
 .idea/dataSources.ids
 node_modules
 .Vagrantfile
-	
+
+*.iml
+.idea/
