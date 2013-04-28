@@ -1,11 +1,9 @@
 package com.fluxtream.services.impl;
 
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.persistence.Entity;
 import javax.persistence.EntityManager;
@@ -21,15 +19,11 @@ import com.fluxtream.connectors.ObjectType;
 import com.fluxtream.connectors.dao.FacetDao;
 import com.fluxtream.connectors.location.LocationFacet;
 import com.fluxtream.connectors.updaters.UpdateInfo;
-import com.fluxtream.connectors.vos.AbstractFacetVO;
 import com.fluxtream.domain.AbstractFacet;
 import com.fluxtream.domain.AbstractUserProfile;
 import com.fluxtream.domain.ApiKey;
 import com.fluxtream.domain.Tag;
 import com.fluxtream.domain.TagFilter;
-import com.fluxtream.domain.metadata.City;
-import com.fluxtream.domain.metadata.DayMetadataFacet;
-import com.fluxtream.domain.metadata.WeatherInfo;
 import com.fluxtream.events.DataReceivedEvent;
 import com.fluxtream.facets.extractors.AbstractFacetExtractor;
 import com.fluxtream.services.ApiDataService;
@@ -37,12 +31,10 @@ import com.fluxtream.services.BodyTrackStorageService;
 import com.fluxtream.services.EventListenerService;
 import com.fluxtream.services.GuestService;
 import com.fluxtream.services.MetadataService;
-import com.fluxtream.thirdparty.helpers.WWOHelper;
 import com.fluxtream.utils.JPAUtils;
 import com.fluxtream.utils.Utils;
 import net.sf.json.JSONObject;
 import org.jetbrains.annotations.Nullable;
-import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.springframework.beans.factory.BeanFactory;
@@ -89,9 +81,6 @@ public class ApiDataServiceImpl implements ApiDataService {
 
     @Autowired
     EventListenerService eventListenerService;
-
-    @Autowired
-    WWOHelper wwoHelper;
 
     @Autowired
     ServicesHelper servicesHelper;
@@ -621,8 +610,9 @@ public class ApiDataServiceImpl implements ApiDataService {
 
             // Put updateDayMetadata in a try/catch block because we don't want to fail update or
             // fail to persist this datapoint due to some problem in the timezone detection, etc.
+
             try {
-                updateDayMetadata(locationResource.guestId, locationResource.timestampMs, locationResource.latitude, locationResource.longitude);
+                metadataService.updateLocationMetadata(locationResource);
             } catch(Throwable e) {
                 StringBuilder sb = new StringBuilder("module=updateQueue component=apiDataServiceImpl action=addGuestLocation")
                                     .append(" latitude=").append(locationResource.latitude)
@@ -649,26 +639,6 @@ public class ApiDataServiceImpl implements ApiDataService {
                     .append(" message=\"deleted duplicate locationFacet\"");
             logger.info(sb.toString());
         }
-    }
-
-    @Transactional(readOnly = false)
-    private void updateDayMetadata(long guestId, long time, float latitude,
-                                  float longitude) {
-        City city = metadataService.getClosestCity((double)latitude, (double)longitude);
-        String date = formatter.withZone(DateTimeZone.forID(city.geo_timezone))
-                .print(time);
-
-        DayMetadataFacet info = metadataService.getDayMetadata(guestId, date, true);
-        servicesHelper.addCity(info, city);
-
-        TimeZone tz = TimeZone.getTimeZone(info.timeZone);
-        List<WeatherInfo> weatherInfo = metadataService.getWeatherInfo(city.geo_latitude,
-                                                                       city.geo_longitude, info.date,
-                                                                       AbstractFacetVO.toMinuteOfDay(new Date(info.start), tz),
-                                                                       AbstractFacetVO.toMinuteOfDay(new Date(info.end), tz));
-        wwoHelper.setWeatherInfo(info, weatherInfo);
-
-        em.merge(info);
     }
 
     @Override

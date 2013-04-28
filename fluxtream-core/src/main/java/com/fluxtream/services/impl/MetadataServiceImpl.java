@@ -2,17 +2,18 @@ package com.fluxtream.services.impl;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Date;
+import java.util.Calendar;
 import java.util.List;
 import java.util.NavigableSet;
 import java.util.TimeZone;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 import javax.persistence.Query;
+import javax.persistence.TypedQuery;
 import com.fluxtream.Configuration;
 import com.fluxtream.aspects.FlxLogger;
 import com.fluxtream.connectors.location.LocationFacet;
-import com.fluxtream.connectors.vos.AbstractFacetVO;
+import com.fluxtream.domain.Guest;
 import com.fluxtream.domain.metadata.City;
 import com.fluxtream.domain.metadata.DayMetadataFacet;
 import com.fluxtream.domain.metadata.DayMetadataFacet.VisitedCity;
@@ -22,8 +23,6 @@ import com.fluxtream.services.MetadataService;
 import com.fluxtream.services.NotificationsService;
 import com.fluxtream.thirdparty.helpers.WWOHelper;
 import com.fluxtream.utils.JPAUtils;
-import com.fluxtream.utils.TimeUtils;
-import org.apache.commons.httpclient.HttpException;
 import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
@@ -69,8 +68,7 @@ public class MetadataServiceImpl implements MetadataService {
 
 	@Override
 	public TimeZone getCurrentTimeZone(long guestId) {
-		LocationFacet lastLocation = getLastLocation(guestId,
-                                                     System.currentTimeMillis());
+		LocationFacet lastLocation = getLastLocation(guestId, System.currentTimeMillis());
 		if (lastLocation != null) {
 			TimeZone timeZone = getTimeZone(lastLocation.latitude,
 					lastLocation.longitude);
@@ -94,28 +92,8 @@ public class MetadataServiceImpl implements MetadataService {
 
         //TODO: better metadata
 
-        DayMetadataFacet info = JPAUtils.findUnique(em, DayMetadataFacet.class,
-                                                    "context.byDate", guestId, date);
-		if (info != null)
-			return info;
-		else if (create)
-			info = copyNextDailyContextualInfo(guestId, date);
-		if (info != null)
-			return info;
-		else {
-			info = new DayMetadataFacet(-1);
-			info.date = date;
-            // let's assume UTC by default
-            info.timeZone = TimeZone.getTimeZone("UTC").getID();
-            final DateTimeFormatter utcDateFormatter = formatter.withZone(DateTimeZone.forID(info.timeZone));
-            final long l = utcDateFormatter.parseMillis(date);
-            final long fromMidnight = TimeUtils.fromMidnight(l, TimeZone.getTimeZone("UTC"));
-            final long toMidnight = TimeUtils.toMidnight(l, TimeZone.getTimeZone("UTC"));
-            info.start = fromMidnight;
-            info.end = toMidnight;
-			info.guestId = guestId;
-			return info;
-		}
+        DayMetadataFacet info = new DayMetadataFacet();
+        return info;
 	}
 
     @Override
@@ -125,48 +103,6 @@ public class MetadataServiceImpl implements MetadataService {
 
         return JPAUtils.find(em, DayMetadataFacet.class,"context.all",guestId);
     }
-
-    @Transactional(readOnly = false)
-	public DayMetadataFacet copyNextDailyContextualInfo(long guestId,
-			String date) {
-		DayMetadataFacet next = getNextExistingDayMetadata(guestId, date);
-		DayMetadataFacet info = new DayMetadataFacet(-1);
-		info.guestId = guestId;
-		info.date = date;
-
-		if (next == null) {
-			return null;
-		} else {
-			City mainCity = getMainCity(guestId, next);
-			if (mainCity != null) {
-				servicesHelper.addCity(info, mainCity);
-				servicesHelper.setTimeZone(info, next.timeZone);
-				TimeZone tz = TimeZone.getTimeZone(next.timeZone);
-				List<WeatherInfo> weatherInfo = getWeatherInfo(
-						mainCity.geo_latitude, mainCity.geo_longitude, date,
-                        AbstractFacetVO.toMinuteOfDay(new Date(info.start), tz),
-                        AbstractFacetVO.toMinuteOfDay(new Date(info.end), tz));
-				setWeatherInfo(info, weatherInfo);
-			}
-			servicesHelper.setTimeZone(info, next.timeZone);
-		}
-		em.persist(info);
-		return info;
-	}
-
-	private DayMetadataFacet getNextExistingDayMetadata(long guestId,
-			String todaysDate) {
-        // TODO: better metadata
-		// TODO: not totally accurate, since we are ignoring the timezone
-		// of todaysDate, but should work in most cases
-		long start = formatter.parseMillis(todaysDate);
-		DayMetadataFacet next = JPAUtils.findUnique(em, DayMetadataFacet.class,
-				"context.day.next", guestId, start);
-		if (next == null)
-			next = JPAUtils.findUnique(em, DayMetadataFacet.class,
-					"context.day.oldest", guestId);
-		return next;
-	}
 
 	@Override
 	public City getMainCity(long guestId, DayMetadataFacet context) {
@@ -212,23 +148,6 @@ public class MetadataServiceImpl implements MetadataService {
 		LocationFacet lastSeen = JPAUtils.findUnique(em, LocationFacet.class,
                                                      "location.lastSeen", guestId, time);
 		return lastSeen;
-	}
-
-	@Override
-	public LocationFacet getNextLocation(long guestId, long time) {
-		LocationFacet lastSeen = JPAUtils.findUnique(em, LocationFacet.class,
-				"location.nextSeen", guestId, time);
-		return lastSeen;
-	}
-
-	@Override
-	public DayMetadataFacet getLastDayMetadata(long guestId) {
-
-        //TODO: better metadata
-
-		DayMetadataFacet lastDay = JPAUtils.findUnique(em,
-				DayMetadataFacet.class, "context.day.last", guestId);
-		return lastDay;
 	}
 
 	@Override
@@ -313,9 +232,7 @@ public class MetadataServiceImpl implements MetadataService {
     public List<WeatherInfo> getWeatherInfo(double latitude, double longitude,
                                             String date, int startMinute, int endMinute) {
         City closestCity = getClosestCity(latitude, longitude);
-        List<WeatherInfo> weather = JPAUtils.find(em, WeatherInfo.class,
-                                                  "weather.byDateAndCity.between", closestCity.geo_name, date,
-                                                  startMinute, endMinute);
+        List<WeatherInfo> weather = JPAUtils.find(em, WeatherInfo.class, "weather.byDateAndCity.between", closestCity.geo_name, date, startMinute, endMinute);
 
         if (weather != null && weather.size() > 0) {
             addIcons(weather);
@@ -336,9 +253,60 @@ public class MetadataServiceImpl implements MetadataService {
         return weather;
     }
 
+    @Override
+    public void rebuildMetadata(final String username) {
+        final Guest guest = guestService.getGuest(username);
+        String entityName = JPAUtils.getEntityName(LocationFacet.class);
+        final TypedQuery<LocationFacet> query = em.createQuery(String.format("select facet from %s facet WHERE facet.guestId=%s", entityName, guest.getId()), LocationFacet.class);
+        final List<LocationFacet> resultList = query.getResultList();
+        for (LocationFacet locationFacet : resultList) {
+            updateLocationMetadata(locationFacet);
+        }
+    }
+
+    @Override
+    public void updateLocationMetadata(final LocationFacet locationFacet) {
+        final City city = getClosestCity(locationFacet.latitude, locationFacet.longitude);
+        storeCity(locationFacet.start, locationFacet.source, city);
+        // get the weather info for this date, time and location
+        WeatherInfo weatherInfo = getWeatherForLocation(locationFacet, TimeZone.getTimeZone(city.geo_timezone));
+        storeWeather(locationFacet.start, locationFacet.source, weatherInfo);
+        storeTimeZone(locationFacet.start, locationFacet.source, city.geo_timezone);
+    }
+
+    private void storeCity(final long ts, final LocationFacet.Source source, final City city) {
+        // if we already have the same city before ts, than just leave it as is and return
+        // otherwise store it
+        // if we have the same city just after ts, delete it
+    }
+
+    private void storeWeather(final long ts, final LocationFacet.Source source, final WeatherInfo weatherInfo) {
+        // if we already have the same weather info before locationFacet.start, than just leave it as is and return
+        // otherwise store it
+        // if we have the same weatherinfo just after locationFacet.start, delete it
+    }
+
+    private void storeTimeZone(final long ts, final LocationFacet.Source source, final String timezone) {
+        // if we already have the same timezone before ts, than just leave it as is and return
+        // otherwise store it
+        // if we have the same timezone just after ts, delete it
+    }
+
+
+    private WeatherInfo getWeatherForLocation(final LocationFacet locationFacet, TimeZone tz) {
+        String date = formatter.withZone(DateTimeZone.forTimeZone(tz)).print(locationFacet.start);
+        Calendar c = Calendar.getInstance(tz);
+        c.setTimeInMillis(locationFacet.start);
+        int startMinute = c.get(Calendar.HOUR_OF_DAY)*60+c.get(Calendar.MINUTE);
+        final List<WeatherInfo> weatherInfo = getWeatherInfo(locationFacet.latitude, locationFacet.longitude, date, startMinute, startMinute);
+        if (weatherInfo.size()>0)
+            return weatherInfo.get(0);
+        else return null;
+    }
+
     @Transactional(readOnly = false)
     private void fetchWeatherInfo(double latitude, double longitude,
-                                  String city, String date) throws HttpException, IOException {
+                                  String city, String date) throws IOException {
         List<WeatherInfo> weatherInfo = wwoHelper.getWeatherInfo(latitude,
                                                                  longitude, date);
         for (WeatherInfo info : weatherInfo) {
