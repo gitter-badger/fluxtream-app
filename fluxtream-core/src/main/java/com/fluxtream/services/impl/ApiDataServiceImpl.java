@@ -32,7 +32,6 @@ import com.fluxtream.services.EventListenerService;
 import com.fluxtream.services.GuestService;
 import com.fluxtream.services.MetadataService;
 import com.fluxtream.utils.JPAUtils;
-import com.fluxtream.utils.Utils;
 import net.sf.json.JSONObject;
 import org.jetbrains.annotations.Nullable;
 import org.joda.time.format.DateTimeFormat;
@@ -569,6 +568,7 @@ public class ApiDataServiceImpl implements ApiDataService {
             locationResource.apiKeyId = -locationResource.apiKeyId;
             em.persist(locationResource);
         }
+        metadataService.updateLocationMetadata(guestId, locationResources);
     }
 
     @Override
@@ -606,20 +606,6 @@ public class ApiDataServiceImpl implements ApiDataService {
             }
             else {
                 locationResource.api=0;// This happens when GuestServiceImpl CheckIn function uses ip lookup
-            }
-
-            // Put updateDayMetadata in a try/catch block because we don't want to fail update or
-            // fail to persist this datapoint due to some problem in the timezone detection, etc.
-
-            try {
-                metadataService.updateLocationMetadata(locationResource);
-            } catch(Throwable e) {
-                StringBuilder sb = new StringBuilder("module=updateQueue component=apiDataServiceImpl action=addGuestLocation")
-                                    .append(" latitude=").append(locationResource.latitude)
-                                    .append(" longitude=").append(locationResource.longitude)
-                                    .append(" guestId=").append(locationResource.guestId)
-                                    .append(" stackTrace=<![CDATA[").append(Utils.stackTrace(e)).append("]]>");
-                logger.warn(sb.toString());
             }
 
             // make apiKeyId "legit" again
