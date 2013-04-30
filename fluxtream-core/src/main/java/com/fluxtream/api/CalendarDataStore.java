@@ -8,7 +8,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-import java.util.NavigableSet;
 import java.util.TimeZone;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -34,7 +33,6 @@ import com.fluxtream.domain.GuestSettings;
 import com.fluxtream.domain.Notification;
 import com.fluxtream.domain.metadata.City;
 import com.fluxtream.domain.metadata.DayMetadataFacet;
-import com.fluxtream.domain.metadata.DayMetadataFacet.VisitedCity;
 import com.fluxtream.mvc.models.AddressModel;
 import com.fluxtream.mvc.models.ConnectorDigestModel;
 import com.fluxtream.mvc.models.ConnectorResponseModel;
@@ -180,7 +178,6 @@ public class CalendarDataStore {
                           dayMetadata);
 
             copyMetadata(digest, dayMetadata);
-            setVisitedCities(digest, guestId, dayMetadata);
             setNotifications(digest, AuthHelper.getGuestId());
             setCurrentAddress(digest, guestId, dayMetadata.start);
             digest.settings = new SettingsModel(settings,guest);
@@ -273,7 +270,6 @@ public class CalendarDataStore {
                           dayMetadata);
 
             copyMetadata(digest, dayMetadata);
-            setVisitedCities(digest, guestId, dayMetadata);
             setNotifications(digest, AuthHelper.getGuestId());
             setCurrentAddress(digest, guestId, dayMetadata.start);
             digest.settings = new SettingsModel(settings, guest);
@@ -363,7 +359,6 @@ public class CalendarDataStore {
                           dayMetadata);
 
             copyMetadata(digest, dayMetadata);
-            setVisitedCities(digest, guestId, dayMetadata);
             setNotifications(digest, AuthHelper.getGuestId());
             setCurrentAddress(digest, guestId, dayMetadata.start);
             digest.settings = new SettingsModel(settings,guest);
@@ -454,7 +449,6 @@ public class CalendarDataStore {
                     dayMetadata);
 
             copyMetadata(digest, dayMetadata);
-            setVisitedCities(digest, guestId, dayMetadata);
             setNotifications(digest, AuthHelper.getGuestId());
             setCurrentAddress(digest, guestId, dayMetadata.start);
             digest.settings = new SettingsModel(settings,guest);
@@ -740,20 +734,6 @@ public class CalendarDataStore {
         }
 	}
 
-	private void setVisitedCities(DigestModel digest, long guestId,
-			DayMetadataFacet md) {
-		List<VisitedCity> visitedCities = new ArrayList<VisitedCity>();
-		NavigableSet<VisitedCity> orderedCities = md.getOrderedCities();
-		if (orderedCities != null) {
-			NavigableSet<VisitedCity> descendingSet = orderedCities
-					.descendingSet();
-            for (VisitedCity visitedCity : descendingSet) {
-                visitedCities.add(visitedCity);
-            }
-		}
-		digest.cities = visitedCities;
-	}
-
 	private void setNotifications(DigestModel digest, long guestId) {
 		List<Notification> notifications = notificationsService
 				.getNotifications(guestId);
@@ -763,8 +743,6 @@ public class CalendarDataStore {
 	}
 
 	private void copyMetadata(DigestModel digest, DayMetadataFacet md) {
-		digest.inTransit = md.inTransit;
-		digest.travelType = md.travelType;
 		digest.minTempC = md.minTempC;
 		digest.minTempF = md.minTempF;
 		digest.maxTempC = md.maxTempC;
